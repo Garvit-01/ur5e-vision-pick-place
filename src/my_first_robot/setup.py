@@ -34,7 +34,8 @@ setup(
         'gripper_client = my_first_robot.gripper_service_client:main',
         'move_action_server = my_first_robot.move_action_server:main',
         'move_action_client = my_first_robot.move_action_client:main',
-        'moveit_commander = my_first_robot.moveit_commander:main'
+        'moveit_commander = my_first_robot.moveit_commander:main',
+        'moveit_cartesian = my_first_robot.moveit_cartesian:main'
     ],
 },
 )
