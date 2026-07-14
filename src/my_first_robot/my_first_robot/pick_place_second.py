@@ -29,7 +29,54 @@ class PickPlace(Node):
         
         self.add_cube()
         time.sleep(1.0)
-        self.open_gripper()
+        self.move_to_home()
+        
+    def move_to_home(self):
+        self.get_logger().info('Moving to home position...')
+        goal = MoveGroup.Goal()
+        goal.request.group_name = "panda_arm"
+        goal.request.num_planning_attempts = 10
+        goal.request.allowed_planning_time = 5.0
+        goal.request.max_velocity_scaling_factor = 0.2
+        goal.request.max_acceleration_scaling_factor = 0.2
+
+        from moveit_msgs.msg import RobotState
+        from sensor_msgs.msg import JointState
+
+        joint_state = JointState()
+        joint_state.name = [
+            'panda_joint1', 'panda_joint2', 'panda_joint3',
+            'panda_joint4', 'panda_joint5', 'panda_joint6', 'panda_joint7'
+        ]
+        joint_state.position = [0.0, -0.785, 0.0, -2.356, 0.0, 1.571, 0.785]
+
+        robot_state = RobotState()
+        robot_state.joint_state = joint_state
+
+        goal.request.goal_constraints.append(
+            self.joint_state_to_constraints(joint_state)
+        )
+        goal.planning_options.plan_only = False
+
+        future = self._action_client.send_goal_async(goal)
+        future.add_done_callback(
+            lambda f: f.result().get_result_async().add_done_callback(
+                lambda r: self.open_gripper()
+            )
+        )
+
+    def joint_state_to_constraints(self, joint_state):
+        from moveit_msgs.msg import Constraints, JointConstraint
+        constraints = Constraints()
+        for name, position in zip(joint_state.name, joint_state.position):
+            jc = JointConstraint()
+            jc.joint_name = name
+            jc.position = position
+            jc.tolerance_above = 0.01
+            jc.tolerance_below = 0.01
+            jc.weight = 1.0
+            constraints.joint_constraints.append(jc)
+        return constraints
 
     def add_cube(self):
         cube = CollisionObject()
