@@ -3,7 +3,7 @@ from rclpy.node import Node
 from rclpy.action import ActionClient
 from moveit_msgs.action import MoveGroup
 from moveit_msgs.msg import Constraints, PositionConstraint, OrientationConstraint
-from moveit_msgs.msg import CollisionObject
+from moveit_msgs.msg import CollisionObject, AttachedCollisionObject
 from geometry_msgs.msg import PoseStamped, Pose
 from shape_msgs.msg import SolidPrimitive
 from control_msgs.action import GripperCommand
@@ -22,11 +22,16 @@ class PickPlace(Node):
         self._scene_pub = self.create_publisher(
             CollisionObject, 'collision_object', 10
         )
+        self._attach_pub = self.create_publisher(
+            AttachedCollisionObject, 'attached_collision_object', 10
+        )
         
         self.get_logger().info('Waiting for MoveGroup...')
         self._action_client.wait_for_server()
         self.get_logger().info('Connected!')
         
+        self.detach_cube()
+        time.sleep(0.5)
         self.add_cube()
         time.sleep(1.0)
         self.move_to_home()
@@ -78,6 +83,14 @@ class PickPlace(Node):
             constraints.joint_constraints.append(jc)
         return constraints
 
+    def detach_cube(self):
+        detached = AttachedCollisionObject()
+        detached.link_name = "panda_hand"
+        detached.object.id = "target_cube"
+        detached.object.operation = CollisionObject.REMOVE
+        self._attach_pub.publish(detached)
+        self.get_logger().info('Detached any previously-attached cube')
+
     def add_cube(self):
         cube = CollisionObject()
         cube.header.frame_id = "panda_link0"
@@ -110,7 +123,19 @@ class PickPlace(Node):
         goal.command.position = 0.02  # closed
         goal.command.max_effort = 10.0
         future = self._gripper_client.send_goal_async(goal)
-        future.add_done_callback(lambda f: self.move_up())
+        future.add_done_callback(lambda f: self.attach_cube())
+
+    def attach_cube(self):
+        self.get_logger().info('Attaching cube to gripper...')
+        attached = AttachedCollisionObject()
+        attached.link_name = "panda_hand"
+        attached.object.header.frame_id = "panda_link0"
+        attached.object.id = "target_cube"
+        attached.object.operation = CollisionObject.ADD
+        attached.touch_links = ["panda_hand", "panda_leftfinger", "panda_rightfinger"]
+        self._attach_pub.publish(attached)
+        time.sleep(0.5)  # let the planning scene monitor process the attach
+        self.move_up()
 
     def move_above_cube(self):
         self.get_logger().info('Moving above cube...')
@@ -141,7 +166,11 @@ class PickPlace(Node):
         target.pose.position.x = x
         target.pose.position.y = y
         target.pose.position.z = z
-        target.pose.orientation.w = 1.0
+        # Point the gripper straight down (180 deg flip about X)
+        target.pose.orientation.x = 1.0
+        target.pose.orientation.y = 0.0
+        target.pose.orientation.z = 0.0
+        target.pose.orientation.w = 0.0
 
         pc = PositionConstraint()
         pc.header.frame_id = "panda_link0"
@@ -157,9 +186,9 @@ class PickPlace(Node):
         oc.header.frame_id = "panda_link0"
         oc.link_name = "panda_hand"
         oc.orientation = target.pose.orientation
-        oc.absolute_x_axis_tolerance = 0.5
-        oc.absolute_y_axis_tolerance = 0.5
-        oc.absolute_z_axis_tolerance = 0.5
+        oc.absolute_x_axis_tolerance = 0.3
+        oc.absolute_y_axis_tolerance = 0.3
+        oc.absolute_z_axis_tolerance = 0.3
         oc.weight = 1.0
 
         constraints = Constraints()
