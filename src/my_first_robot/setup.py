@@ -37,6 +37,7 @@ setup(
         'moveit_commander = my_first_robot.moveit_commander:main',
         'moveit_cartesian = my_first_robot.moveit_cartesian:main',
         'pick_place = my_first_robot.pick_place:main',
+        'pick_place_second = my_first_robot.pick_place_second:main'
     ],
 },
 )
