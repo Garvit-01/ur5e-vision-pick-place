@@ -143,7 +143,10 @@ class PickPlace(Node):
 
     def move_to_cube(self):
         self.get_logger().info('Moving to cube...')
-        self.send_cartesian_goal(0.4, 0.0, 0.26, self.close_gripper)
+        # panda_hand is the wrist flange, not the fingertips — hand_tcp sits
+        # ~0.1034m further along the approach axis, so offset the target to
+        # land the fingertips at the cube's center (z=0.2)
+        self.send_cartesian_goal(0.4, 0.0, 0.303, self.close_gripper)
 
     def move_up(self):
         self.get_logger().info('Moving up with cube...')
