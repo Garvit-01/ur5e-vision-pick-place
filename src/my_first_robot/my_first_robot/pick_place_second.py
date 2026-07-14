@@ -66,7 +66,7 @@ class PickPlace(Node):
         future = self._action_client.send_goal_async(goal)
         future.add_done_callback(
             lambda f: f.result().get_result_async().add_done_callback(
-                lambda r: self.open_gripper()
+                lambda r: self.open_gripper(self.move_above_cube)
             )
         )
 
@@ -109,13 +109,13 @@ class PickPlace(Node):
         self._scene_pub.publish(cube)
         self.get_logger().info('Cube added at (0.4, 0.0, 0.2)')
 
-    def open_gripper(self):
+    def open_gripper(self, callback):
         self.get_logger().info('Opening gripper...')
         goal = GripperCommand.Goal()
         goal.command.position = 0.08  # fully open
         goal.command.max_effort = 10.0
         future = self._gripper_client.send_goal_async(goal)
-        future.add_done_callback(lambda f: self.move_above_cube())
+        future.add_done_callback(lambda f: callback())
 
     def close_gripper(self):
         self.get_logger().info('Closing gripper...')
@@ -150,10 +150,28 @@ class PickPlace(Node):
 
     def move_up(self):
         self.get_logger().info('Moving up with cube...')
-        self.send_cartesian_goal(0.4, 0.0, 0.5, self.done)
+        self.send_cartesian_goal(0.4, 0.0, 0.5, self.move_to_place_above)
+
+    def move_to_place_above(self):
+        self.get_logger().info('Moving to place location...')
+        self.send_cartesian_goal(0.4, 0.3, 0.5, self.move_to_place)
+
+    def move_to_place(self):
+        self.get_logger().info('Lowering to place location...')
+        # Same fingertip-height offset as the grasp descent
+        self.send_cartesian_goal(0.4, 0.3, 0.303, self.release_cube)
+
+    def release_cube(self):
+        self.detach_cube()
+        time.sleep(0.5)  # let the planning scene monitor process the detach
+        self.open_gripper(self.retreat)
+
+    def retreat(self):
+        self.get_logger().info('Retreating...')
+        self.send_cartesian_goal(0.4, 0.3, 0.5, self.done)
 
     def done(self):
-        self.get_logger().info('Pick complete!')
+        self.get_logger().info('Pick and place complete!')
         rclpy.shutdown()
 
     def send_cartesian_goal(self, x, y, z, callback):
