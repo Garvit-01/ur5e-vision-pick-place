@@ -7,6 +7,8 @@ from moveit_msgs.msg import CollisionObject, AttachedCollisionObject
 from geometry_msgs.msg import PoseStamped, Pose
 from shape_msgs.msg import SolidPrimitive
 from control_msgs.action import GripperCommand
+from tf2_ros import Buffer, TransformListener
+from rclpy.time import Time
 import time
 
 class PickPlace(Node):
@@ -25,16 +27,43 @@ class PickPlace(Node):
         self._attach_pub = self.create_publisher(
             AttachedCollisionObject, 'attached_collision_object', 10
         )
-        
+        self._tf_buffer = Buffer()
+        self._tf_listener = TransformListener(self._tf_buffer, self)
+
         self.get_logger().info('Waiting for MoveGroup...')
         self._action_client.wait_for_server()
         self.get_logger().info('Connected!')
-        
+
         self.detach_cube()
         time.sleep(0.5)
+        self.wait_for_cube_detection()
         self.add_cube()
         time.sleep(1.0)
         self.move_to_home()
+
+    def wait_for_cube_detection(self, timeout_sec=10.0):
+        self.get_logger().info(
+            'Waiting for cube detection (TF: panda_link0 -> target_cube)...'
+        )
+        start = time.time()
+        while time.time() - start < timeout_sec:
+            try:
+                t = self._tf_buffer.lookup_transform(
+                    'panda_link0', 'target_cube', Time()
+                )
+                self.cube_x = t.transform.translation.x
+                self.cube_y = t.transform.translation.y
+                self.cube_z = t.transform.translation.z
+                self.get_logger().info(
+                    f'Detected cube at ({self.cube_x:.3f}, '
+                    f'{self.cube_y:.3f}, {self.cube_z:.3f})'
+                )
+                return
+            except Exception:
+                rclpy.spin_once(self, timeout_sec=0.2)
+        raise RuntimeError(
+            'Timed out waiting for cube detection TF (panda_link0 -> target_cube)'
+        )
         
     def move_to_home(self):
         self.get_logger().info('Moving to home position...')
@@ -99,15 +128,17 @@ class PickPlace(Node):
         shape.type = SolidPrimitive.BOX
         shape.dimensions = [0.05, 0.05, 0.05]
         pose = Pose()
-        pose.position.x = 0.4
-        pose.position.y = 0.0
-        pose.position.z = 0.2
+        pose.position.x = self.cube_x
+        pose.position.y = self.cube_y
+        pose.position.z = self.cube_z
         pose.orientation.w = 1.0
         cube.primitives.append(shape)
         cube.primitive_poses.append(pose)
         cube.operation = CollisionObject.ADD
         self._scene_pub.publish(cube)
-        self.get_logger().info('Cube added at (0.4, 0.0, 0.2)')
+        self.get_logger().info(
+            f'Cube added at ({self.cube_x:.3f}, {self.cube_y:.3f}, {self.cube_z:.3f})'
+        )
 
     def open_gripper(self, callback):
         self.get_logger().info('Opening gripper...')
@@ -139,18 +170,18 @@ class PickPlace(Node):
 
     def move_above_cube(self):
         self.get_logger().info('Moving above cube...')
-        self.send_cartesian_goal(0.4, 0.0, 0.35, self.move_to_cube)
+        self.send_cartesian_goal(self.cube_x, self.cube_y, self.cube_z + 0.15, self.move_to_cube)
 
     def move_to_cube(self):
         self.get_logger().info('Moving to cube...')
         # panda_hand is the wrist flange, not the fingertips — hand_tcp sits
         # ~0.1034m further along the approach axis, so offset the target to
-        # land the fingertips at the cube's center (z=0.2)
-        self.send_cartesian_goal(0.4, 0.0, 0.303, self.close_gripper)
+        # land the fingertips at the cube's center
+        self.send_cartesian_goal(self.cube_x, self.cube_y, self.cube_z + 0.103, self.close_gripper)
 
     def move_up(self):
         self.get_logger().info('Moving up with cube...')
-        self.send_cartesian_goal(0.4, 0.0, 0.5, self.move_to_place_above)
+        self.send_cartesian_goal(self.cube_x, self.cube_y, 0.5, self.move_to_place_above)
 
     def move_to_place_above(self):
         self.get_logger().info('Moving to place location...')

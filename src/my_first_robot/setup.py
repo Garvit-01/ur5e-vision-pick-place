@@ -10,8 +10,14 @@ setup(
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
-        ('share/' + package_name + '/launch', ['launch/robot.launch.py']),
+        ('share/' + package_name + '/launch', [
+            'launch/robot.launch.py',
+            'launch/apriltag.launch.py',
+        ]),
         ('share/' + package_name + '/urdf', ['urdf/my_robot.urdf']),
+        ('share/' + package_name + '/config', [
+            'config/tags_36h11_target_cube.yaml',
+        ]),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
@@ -37,7 +43,8 @@ setup(
         'moveit_commander = my_first_robot.moveit_commander:main',
         'moveit_cartesian = my_first_robot.moveit_cartesian:main',
         'pick_place = my_first_robot.pick_place:main',
-        'pick_place_second = my_first_robot.pick_place_second:main'
+        'pick_place_second = my_first_robot.pick_place_second:main',
+        'mock_tag_detector = my_first_robot.mock_tag_detector:main'
     ],
 },
 )
