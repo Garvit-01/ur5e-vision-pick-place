@@ -238,9 +238,9 @@ class PickPlace(Node):
         oc.header.frame_id = "panda_link0"
         oc.link_name = "panda_hand"
         oc.orientation = target.pose.orientation
-        oc.absolute_x_axis_tolerance = 0.3
-        oc.absolute_y_axis_tolerance = 0.3
-        oc.absolute_z_axis_tolerance = 0.3
+        oc.absolute_x_axis_tolerance = 0.1
+        oc.absolute_y_axis_tolerance = 0.1
+        oc.absolute_z_axis_tolerance = 0.1
         oc.weight = 1.0
 
         constraints = Constraints()

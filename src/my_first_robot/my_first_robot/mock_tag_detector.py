@@ -29,8 +29,8 @@ class MockTagDetector(Node):
 
         # Ground-truth cube pose in panda_link0 - what a real camera would see
         self.cube_pose = Pose()
-        self.cube_pose.position.x = 0.4
-        self.cube_pose.position.y = 0.0
+        self.cube_pose.position.x = 0.5
+        self.cube_pose.position.y = 0.2
         self.cube_pose.position.z = 0.2
         self.cube_pose.orientation.w = 1.0
 
