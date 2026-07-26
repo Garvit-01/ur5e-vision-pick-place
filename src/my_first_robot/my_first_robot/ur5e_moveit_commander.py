@@ -5,6 +5,8 @@ from moveit_msgs.action import MoveGroup
 from moveit_msgs.msg import MotionPlanRequest, WorkspaceParameters, Constraints, JointConstraint
 from shape_msgs.msg import SolidPrimitive
 import math
+import random
+
 # Used this command to get the yaml values of the max position of the ur5e
 
 #cat /opt/ros/jazzy/share/ur_description/config/ur5e/joint_limits.yaml
@@ -41,8 +43,10 @@ class MoveItCommander(Node):
         joint_position_min = [-1*i for i in joint_position_max]
 
         joint_positions = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-
-
+        # joint_positions = []
+        # for i in range(len(joint_position_max)):
+        #     joint_positions.append(random.uniform(joint_position_max[i],joint_position_min[i]))
+        # self.get_logger().info(f'Joint positions: {joint_positions}')
         constraints = Constraints()
         for name, position in zip(joint_names, joint_positions):
             jc = JointConstraint()
