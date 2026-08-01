@@ -26,10 +26,13 @@ class CartesianCommander(Node):
 
         target = PoseStamped()
         target.header.frame_id = "base_link"
-        target.pose.position.x = 0.4
-        target.pose.position.y = 0.1
-        target.pose.position.z = 0.5
-        target.pose.orientation.w = 1.0
+        target.pose.position.x = 0.350
+        target.pose.position.y = 0.410
+        target.pose.position.z = 0.807
+        target.pose.orientation.x = -0.707
+        target.pose.orientation.y = 0.001
+        target.pose.orientation.z = 0.001
+        target.pose.orientation.w = 0.707
 
         pc = PositionConstraint()
         pc.header.frame_id = "base_link"
@@ -45,9 +48,9 @@ class CartesianCommander(Node):
         oc.header.frame_id = "base_link"
         oc.link_name = "tool0"
         oc.orientation = target.pose.orientation
-        oc.absolute_x_axis_tolerance = 0.5
-        oc.absolute_y_axis_tolerance = 0.5
-        oc.absolute_z_axis_tolerance = 0.5
+        oc.absolute_x_axis_tolerance = 0.1
+        oc.absolute_y_axis_tolerance = 0.1
+        oc.absolute_z_axis_tolerance = 0.1
         oc.weight = 1.0
 
         constraints = Constraints()
