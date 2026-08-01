@@ -1,0 +1,32 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://wiki.ros.org/xacro" name="ur5e_robotiq">
+
+  <!-- Include the three building blocks -->
+  <xacro:include filename="$(find ur_description)/urdf/ur_macro.xacro"/>
+  <xacro:include filename="$(find robotiq_description)/urdf/ur_to_robotiq_adapter.urdf.xacro"/>
+  <xacro:include filename="$(find robotiq_description)/urdf/robotiq_2f_85_macro.urdf.xacro"/>
+
+  <link name="world" />
+
+  <!-- 1. The UR5e arm, same 4 yaml config files ur_moveit_config uses under the hood -->
+  <xacro:ur_robot
+    name="ur5e"
+    tf_prefix=""
+    parent="world"
+    joint_limits_parameters_file="$(find ur_description)/config/ur5e/joint_limits.yaml"
+    kinematics_parameters_file="$(find ur_description)/config/ur5e/default_kinematics.yaml"
+    physical_parameters_file="$(find ur_description)/config/ur5e/physical_parameters.yaml"
+    visual_parameters_file="$(find ur_description)/config/ur5e/visual_parameters.yaml"
+    >
+    <origin xyz="0 0 0" rpy="0 0 0" />
+  </xacro:ur_robot>
+
+  <!-- 2. The adapter plate, bolted onto the arm's tool0 flange -->
+  <xacro:ur_to_robotiq prefix="" connected_to="tool0"/>
+
+  <!-- 3. The gripper itself, bolted onto the adapter's mount point -->
+  <xacro:robotiq_gripper name="RobotiqGripperHardwareInterface" prefix="" parent="gripper_mount_link" use_fake_hardware="true">
+    <origin xyz="0 0 0" rpy="0 0 0" />
+  </xacro:robotiq_gripper>
+
+</robot>
