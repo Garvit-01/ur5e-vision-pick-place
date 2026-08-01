@@ -11,7 +11,7 @@ setup(
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
         ('share/' + package_name + '/launch', ['launch/robot.launch.py']),
-        ('share/' + package_name + '/urdf', ['urdf/my_robot.urdf']),
+        ('share/' + package_name + '/urdf', ['urdf/my_robot.urdf','urdf/ur5e_robotiq.urdf.xacro']),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
