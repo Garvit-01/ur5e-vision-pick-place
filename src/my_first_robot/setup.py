@@ -40,6 +40,7 @@ setup(
         'pick_place_second = my_first_robot.pick_place_second:main',
         'ur5e_moveit_commander = my_first_robot.ur5e_moveit_commander:main',
         'ur5e_moveit_cartesian = my_first_robot.ur5e_moveit_cartesian:main',
+        'ur5e_pick_place_second = my_first_robot.ur5e_pick_place_second:main',
 
     ]
 },

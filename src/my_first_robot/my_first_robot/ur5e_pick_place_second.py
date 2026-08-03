@@ -7,17 +7,14 @@ from moveit_msgs.msg import CollisionObject, AttachedCollisionObject
 from geometry_msgs.msg import PoseStamped, Pose
 from shape_msgs.msg import SolidPrimitive
 from control_msgs.action import GripperCommand
-import time
+import time,math
 
 class PickPlace(Node):
     def __init__(self):
         super().__init__('pick_place')
         
         self._action_client = ActionClient(self, MoveGroup, 'move_action')
-        self._gripper_client = ActionClient(
-            self, GripperCommand, 
-            '/panda_hand_controller/gripper_cmd'
-        )
+        
         
         self._scene_pub = self.create_publisher(
             CollisionObject, 'collision_object', 10
@@ -39,7 +36,7 @@ class PickPlace(Node):
     def move_to_home(self):
         self.get_logger().info('Moving to home position...')
         goal = MoveGroup.Goal()
-        goal.request.group_name = "panda_arm"
+        goal.request.group_name = "ur_manipulator"
         goal.request.num_planning_attempts = 10
         goal.request.allowed_planning_time = 5.0
         goal.request.max_velocity_scaling_factor = 0.2
@@ -50,10 +47,19 @@ class PickPlace(Node):
 
         joint_state = JointState()
         joint_state.name = [
-            'panda_joint1', 'panda_joint2', 'panda_joint3',
-            'panda_joint4', 'panda_joint5', 'panda_joint6', 'panda_joint7'
-        ]
-        joint_state.position = [0.0, -0.785, 0.0, -2.356, 0.0, 1.571, 0.785]
+            'shoulder_pan_joint', 'shoulder_lift_joint', 'elbow_joint',
+            'wrist_1_joint', 'wrist_2_joint', 'wrist_3_joint']
+
+        joint_position_max = [360,360,180,360,360,360]
+                # since the values are in degress let's convert to radian
+        
+        for i,deg in enumerate(joint_position_max):
+            joint_position_max[i] = deg*math.pi/180
+                
+        joint_position_min = [-1*i for i in joint_position_max]
+
+        joint_positions = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+        joint_state.position = joint_positions
 
         robot_state = RobotState()
         robot_state.joint_state = joint_state
@@ -67,6 +73,74 @@ class PickPlace(Node):
         future.add_done_callback(
             lambda f: f.result().get_result_async().add_done_callback(
                 lambda r: self.open_gripper(self.move_above_cube)
+            )
+        )
+
+    def open_gripper(self,callback):
+        self.get_logger().info('Moving to home position...')
+        goal = MoveGroup.Goal()
+        goal.request.group_name = "robotiq_gripper"
+        goal.request.num_planning_attempts = 10
+        goal.request.allowed_planning_time = 5.0
+        goal.request.max_velocity_scaling_factor = 0.2
+        goal.request.max_acceleration_scaling_factor = 0.2
+
+        from moveit_msgs.msg import RobotState
+        from sensor_msgs.msg import JointState
+
+        joint_state = JointState()
+        joint_state.name = ['robotiq_85_left_knuckle_joint']
+
+
+
+        joint_positions = [0.0]
+        joint_state.position = joint_positions
+
+        robot_state = RobotState()
+        robot_state.joint_state = joint_state
+
+        goal.request.goal_constraints.append(
+            self.joint_state_to_constraints(joint_state)
+        )
+        goal.planning_options.plan_only = False
+
+        future = self._action_client.send_goal_async(goal)
+        future.add_done_callback(
+            lambda f: f.result().get_result_async().add_done_callback(
+                lambda r: callback()
+            )
+        )
+    def close_gripper(self):
+        self.get_logger().info('Moving to home position...')
+        goal = MoveGroup.Goal()
+        goal.request.group_name = "robotiq_gripper"
+        goal.request.num_planning_attempts = 10
+        goal.request.allowed_planning_time = 5.0
+        goal.request.max_velocity_scaling_factor = 0.2
+        goal.request.max_acceleration_scaling_factor = 0.2
+
+        from moveit_msgs.msg import RobotState
+        from sensor_msgs.msg import JointState
+
+        joint_state = JointState()
+        joint_state.name = ['robotiq_85_left_knuckle_joint']
+
+
+        joint_positions = [0.8]
+        joint_state.position = joint_positions
+
+        robot_state = RobotState()
+        robot_state.joint_state = joint_state
+
+        goal.request.goal_constraints.append(
+            self.joint_state_to_constraints(joint_state)
+        )
+        goal.planning_options.plan_only = False
+
+        future = self._action_client.send_goal_async(goal)
+        future.add_done_callback(
+            lambda f: f.result().get_result_async().add_done_callback(
+                lambda r: self.attach_cube()
             )
         )
 
@@ -85,7 +159,7 @@ class PickPlace(Node):
 
     def detach_cube(self):
         detached = AttachedCollisionObject()
-        detached.link_name = "panda_hand"
+        detached.link_name = "tool0"
         detached.object.id = "target_cube"
         detached.object.operation = CollisionObject.REMOVE
         self._attach_pub.publish(detached)
@@ -93,7 +167,7 @@ class PickPlace(Node):
 
     def add_cube(self):
         cube = CollisionObject()
-        cube.header.frame_id = "panda_link0"
+        cube.header.frame_id = "base_link"
         cube.id = "target_cube"
         shape = SolidPrimitive()
         shape.type = SolidPrimitive.BOX
@@ -109,30 +183,18 @@ class PickPlace(Node):
         self._scene_pub.publish(cube)
         self.get_logger().info('Cube added at (0.4, 0.0, 0.2)')
 
-    def open_gripper(self, callback):
-        self.get_logger().info('Opening gripper...')
-        goal = GripperCommand.Goal()
-        goal.command.position = 0.08  # fully open
-        goal.command.max_effort = 10.0
-        future = self._gripper_client.send_goal_async(goal)
-        future.add_done_callback(lambda f: callback())
-
-    def close_gripper(self):
-        self.get_logger().info('Closing gripper...')
-        goal = GripperCommand.Goal()
-        goal.command.position = 0.02  # closed
-        goal.command.max_effort = 10.0
-        future = self._gripper_client.send_goal_async(goal)
-        future.add_done_callback(lambda f: self.attach_cube())
-
     def attach_cube(self):
         self.get_logger().info('Attaching cube to gripper...')
         attached = AttachedCollisionObject()
-        attached.link_name = "panda_hand"
-        attached.object.header.frame_id = "panda_link0"
+        attached.link_name = "tool0"
+        attached.object.header.frame_id = "base_link"
         attached.object.id = "target_cube"
         attached.object.operation = CollisionObject.ADD
-        attached.touch_links = ["panda_hand", "panda_leftfinger", "panda_rightfinger"]
+        attached.touch_links = [
+            "tool0",
+            "robotiq_85_left_finger_link", "robotiq_85_right_finger_link",
+            "robotiq_85_left_finger_tip_link", "robotiq_85_right_finger_tip_link",
+        ]
         self._attach_pub.publish(attached)
         time.sleep(0.5)  # let the planning scene monitor process the attach
         self.move_up()
@@ -143,10 +205,11 @@ class PickPlace(Node):
 
     def move_to_cube(self):
         self.get_logger().info('Moving to cube...')
-        # panda_hand is the wrist flange, not the fingertips — hand_tcp sits
-        # ~0.1034m further along the approach axis, so offset the target to
-        # land the fingertips at the cube's center (z=0.2)
-        self.send_cartesian_goal(0.4, 0.0, 0.303, self.close_gripper)
+        # tool0 is the wrist flange, not the fingertips — the Robotiq
+        # gripper's reach is estimated at ~0.16m beyond tool0 (spec-based
+        # guess, not measured — tune empirically once tested), so offset
+        # the target to land the fingertips at the cube's center (z=0.2)
+        self.send_cartesian_goal(0.4, 0.0, 0.36, self.close_gripper)
 
     def move_up(self):
         self.get_logger().info('Moving up with cube...')
@@ -159,7 +222,7 @@ class PickPlace(Node):
     def move_to_place(self):
         self.get_logger().info('Lowering to place location...')
         # Same fingertip-height offset as the grasp descent
-        self.send_cartesian_goal(0.4, 0.3, 0.303, self.release_cube)
+        self.send_cartesian_goal(0.4, 0.3, 0.36, self.release_cube)
 
     def release_cube(self):
         self.detach_cube()
@@ -176,14 +239,14 @@ class PickPlace(Node):
 
     def send_cartesian_goal(self, x, y, z, callback):
         goal = MoveGroup.Goal()
-        goal.request.group_name = "panda_arm"
+        goal.request.group_name = "ur_manipulator"
         goal.request.num_planning_attempts = 20
         goal.request.allowed_planning_time = 10.0
         goal.request.max_velocity_scaling_factor = 0.1
         goal.request.max_acceleration_scaling_factor = 0.1
 
         target = PoseStamped()
-        target.header.frame_id = "panda_link0"
+        target.header.frame_id = "base_link"
         target.pose.position.x = x
         target.pose.position.y = y
         target.pose.position.z = z
@@ -194,8 +257,8 @@ class PickPlace(Node):
         target.pose.orientation.w = 0.0
 
         pc = PositionConstraint()
-        pc.header.frame_id = "panda_link0"
-        pc.link_name = "panda_hand"
+        pc.header.frame_id = "base_link"
+        pc.link_name = "tool0"
         primitive = SolidPrimitive()
         primitive.type = SolidPrimitive.SPHERE
         primitive.dimensions = [0.01]
@@ -204,8 +267,8 @@ class PickPlace(Node):
         pc.weight = 1.0
 
         oc = OrientationConstraint()
-        oc.header.frame_id = "panda_link0"
-        oc.link_name = "panda_hand"
+        oc.header.frame_id = "base_link"
+        oc.link_name = "tool0"
         oc.orientation = target.pose.orientation
         oc.absolute_x_axis_tolerance = 0.3
         oc.absolute_y_axis_tolerance = 0.3
