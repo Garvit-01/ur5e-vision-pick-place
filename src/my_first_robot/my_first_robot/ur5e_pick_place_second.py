@@ -231,7 +231,34 @@ class PickPlace(Node):
 
     def move_up(self):
         self.get_logger().info('Moving up with cube...')
-        self.send_cartesian_goal(0.4, -0.3, 0.5, self.done)
+        self.send_cartesian_goal(0.4, -0.3, 0.5, self.move_to_place_above)
+
+    def move_to_place_above(self):
+        self.get_logger().info('Moving to place location...')
+        self.send_cartesian_goal(0.4, 0.3, 0.5, self.move_to_place)
+
+    def move_to_place(self):
+        self.get_logger().info('Lowering to place location...')
+        # Same fingertip-height offset as the grasp descent
+        self.send_cartesian_goal(0.4, 0.3, 0.36, self.release_cube)
+
+    def release_cube(self):
+        self.get_logger().info('Releasing cube...')
+        # Open first, while the cube is still attached (its touch_links
+        # exception still applies) — the same reason attach happens before
+        # close on the pick side. Detach only after the fingers have
+        # cleared, so there's no gripper-vs-cube contact left to trip
+        # CheckStartStateCollision.
+        self.open_gripper(self.finish_release)
+
+    def finish_release(self):
+        self.detach_cube()
+        time.sleep(0.5)  # let the planning scene monitor process the detach
+        self.retreat()
+
+    def retreat(self):
+        self.get_logger().info('Retreating...')
+        self.send_cartesian_goal(0.4, 0.3, 0.5, self.done)
 
     def move_above_cube(self):
         self.get_logger().info('Moving above cube...')
@@ -246,7 +273,7 @@ class PickPlace(Node):
         self.send_cartesian_goal(0.4, -0.3, 0.36, lambda: self.attach_cube(lambda: self.close_gripper(self.move_up)))
 
     def done(self):
-        self.get_logger().info('Stage 2 complete: picked up the cube.')
+        self.get_logger().info('Pick and place complete!')
         rclpy.shutdown()
 
     def send_cartesian_goal(self, x, y, z, callback, retries_left=5):
