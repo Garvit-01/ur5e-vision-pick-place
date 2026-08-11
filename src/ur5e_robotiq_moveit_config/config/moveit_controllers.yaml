@@ -10,6 +10,8 @@ moveit_simple_controller_manager:
 
   ur_manipulator_controller:
     type: FollowJointTrajectory
+    action_ns: follow_joint_trajectory
+    default: true
     joints:
       - shoulder_pan_joint
       - shoulder_lift_joint
@@ -19,5 +21,7 @@ moveit_simple_controller_manager:
       - wrist_3_joint
   robotiq_gripper_controller:
     type: FollowJointTrajectory
+    action_ns: follow_joint_trajectory
+    default: true
     joints:
       - robotiq_85_left_knuckle_joint
