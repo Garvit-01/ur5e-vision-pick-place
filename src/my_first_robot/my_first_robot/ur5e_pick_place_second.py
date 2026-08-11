@@ -221,6 +221,8 @@ class PickPlace(Node):
             "tool0",
             "robotiq_85_left_finger_link", "robotiq_85_right_finger_link",
             "robotiq_85_left_finger_tip_link", "robotiq_85_right_finger_tip_link",
+            "robotiq_85_left_knuckle_link", "robotiq_85_right_knuckle_link",
+            "robotiq_85_left_inner_knuckle_link", "robotiq_85_right_inner_knuckle_link",
         ]
         self._attach_pub.publish(attached)
         # Attaching (with touch_links) is what tells the collision checker
