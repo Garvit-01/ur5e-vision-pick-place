@@ -25,7 +25,7 @@
   <xacro:ur_to_robotiq prefix="" connected_to="tool0"/>
 
   <!-- 3. The gripper itself, bolted onto the adapter's mount point -->
-  <xacro:robotiq_gripper name="RobotiqGripperHardwareInterface" prefix="" parent="gripper_mount_link" use_fake_hardware="true">
+  <xacro:robotiq_gripper name="RobotiqGripperHardwareInterface" prefix="" parent="gripper_mount_link" use_fake_hardware="true" include_ros2_control="false">
     <origin xyz="0 0 0" rpy="0 0 0" />
   </xacro:robotiq_gripper>
 
