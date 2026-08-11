@@ -12,27 +12,27 @@ import time,math
 class PickPlace(Node):
     def __init__(self):
         super().__init__('pick_place')
-        
+
         self._action_client = ActionClient(self, MoveGroup, 'move_action')
-        
-        
+
+
         self._scene_pub = self.create_publisher(
             CollisionObject, 'collision_object', 10
         )
         self._attach_pub = self.create_publisher(
             AttachedCollisionObject, 'attached_collision_object', 10
         )
-        
+
         self.get_logger().info('Waiting for MoveGroup...')
         self._action_client.wait_for_server()
         self.get_logger().info('Connected!')
-        
+
         self.detach_cube()
         time.sleep(0.5)
         self.add_cube()
         time.sleep(1.0)
         self.move_to_home()
-        
+
     def move_to_home(self, retries_left=5):
         self.get_logger().info('Moving to home position...')
         goal = MoveGroup.Goal()
@@ -52,10 +52,10 @@ class PickPlace(Node):
 
         joint_position_max = [360,360,180,360,360,360]
                 # since the values are in degress let's convert to radian
-        
+
         for i,deg in enumerate(joint_position_max):
             joint_position_max[i] = deg*math.pi/180
-                
+
         joint_position_min = [-1*i for i in joint_position_max]
 
         joint_positions = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
@@ -120,6 +120,44 @@ class PickPlace(Node):
                 )
             )
         )
+    def close_gripper(self, callback, retries_left=5):
+        self.get_logger().info('Closing gripper...')
+        goal = MoveGroup.Goal()
+        goal.request.group_name = "robotiq_gripper"
+        goal.request.num_planning_attempts = 10
+        goal.request.allowed_planning_time = 5.0
+        goal.request.max_velocity_scaling_factor = 0.2
+        goal.request.max_acceleration_scaling_factor = 0.2
+
+        from moveit_msgs.msg import RobotState
+        from sensor_msgs.msg import JointState
+
+        joint_state = JointState()
+        joint_state.name = ['robotiq_85_left_knuckle_joint']
+
+        joint_positions = [0.8]
+        joint_state.position = joint_positions
+
+        robot_state = RobotState()
+        robot_state.joint_state = joint_state
+
+        goal.request.goal_constraints.append(
+            self.joint_state_to_constraints(joint_state)
+        )
+        goal.planning_options.plan_only = False
+
+        future = self._action_client.send_goal_async(goal)
+        future.add_done_callback(
+            lambda f: f.result().get_result_async().add_done_callback(
+                lambda r: self.on_goal_result(
+                    r,
+                    lambda n: self.close_gripper(callback, n),
+                    callback,
+                    retries_left,
+                )
+            )
+        )
+
     def on_goal_result(self, result_future, resend, callback, retries_left):
         error_code = result_future.result().result.error_code.val
         self.get_logger().info(f'Error code: {error_code}')
@@ -180,6 +218,26 @@ class PickPlace(Node):
         self._scene_pub.publish(cube)
         self.get_logger().info('Cube added at (0.4, -0.3, 0.2)')
 
+    def attach_cube(self):
+        self.get_logger().info('Attaching cube to gripper...')
+        attached = AttachedCollisionObject()
+        attached.link_name = "tool0"
+        attached.object.header.frame_id = "base_link"
+        attached.object.id = "target_cube"
+        attached.object.operation = CollisionObject.ADD
+        attached.touch_links = [
+            "tool0",
+            "robotiq_85_left_finger_link", "robotiq_85_right_finger_link",
+            "robotiq_85_left_finger_tip_link", "robotiq_85_right_finger_tip_link",
+        ]
+        self._attach_pub.publish(attached)
+        time.sleep(0.5)  # let the planning scene monitor process the attach
+        self.move_up()
+
+    def move_up(self):
+        self.get_logger().info('Moving up with cube...')
+        self.send_cartesian_goal(0.4, -0.3, 0.5, self.done)
+
     def move_above_cube(self):
         self.get_logger().info('Moving above cube...')
         self.send_cartesian_goal(0.4, -0.3, 0.35, self.move_to_cube)
@@ -190,10 +248,10 @@ class PickPlace(Node):
         # gripper's reach is estimated at ~0.16m beyond tool0 (spec-based
         # guess, not measured — tune empirically once tested), so offset
         # the target to land the fingertips at the cube's center (z=0.2)
-        self.send_cartesian_goal(0.4, -0.3, 0.36, self.done)
+        self.send_cartesian_goal(0.4, -0.3, 0.36, lambda: self.close_gripper(self.attach_cube))
 
     def done(self):
-        self.get_logger().info('Stage 1 complete: reached the cube.')
+        self.get_logger().info('Stage 2 complete: picked up the cube.')
         rclpy.shutdown()
 
     def send_cartesian_goal(self, x, y, z, callback, retries_left=5):
