@@ -7,32 +7,75 @@ from moveit_msgs.msg import CollisionObject, AttachedCollisionObject
 from geometry_msgs.msg import PoseStamped, Pose
 from shape_msgs.msg import SolidPrimitive
 from control_msgs.action import GripperCommand
+from tf2_ros import Buffer, TransformListener
 import time,math
 
 class PickPlace(Node):
     def __init__(self):
         super().__init__('pick_place')
-        
+
         self._action_client = ActionClient(self, MoveGroup, 'move_action')
-        
-        
+
+
         self._scene_pub = self.create_publisher(
             CollisionObject, 'collision_object', 10
         )
         self._attach_pub = self.create_publisher(
             AttachedCollisionObject, 'attached_collision_object', 10
         )
-        
+
+        self._tf_buffer = Buffer()
+        self._tf_listener = TransformListener(self._tf_buffer, self)
+
         self.get_logger().info('Waiting for MoveGroup...')
         self._action_client.wait_for_server()
         self.get_logger().info('Connected!')
-        
+
         self.detach_cube()
         time.sleep(0.5)
+        self.lookup_cube_pose()
+
+    def lookup_cube_pose(self, retries_left=20):
+        if retries_left <= 0:
+            self.get_logger().error(
+                'Could not find target_cube TF after retries — '
+                'is apriltag_node running and actually detecting the tag?'
+            )
+            rclpy.shutdown()
+            return
+        # The TF listener only receives data while the executor is spinning,
+        # which hasn't started yet this early in __init__ — pump it manually
+        # for a bit each retry so the buffer actually has a chance to fill.
+        rclpy.spin_once(self, timeout_sec=0.5)
+        try:
+            t = self._tf_buffer.lookup_transform('base_link', 'target_cube', rclpy.time.Time())
+        except Exception:
+            self.get_logger().info(f'Waiting for target_cube TF... ({retries_left} retries left)')
+            self.lookup_cube_pose(retries_left - 1)
+            return
+        self.cube_x = t.transform.translation.x
+        self.cube_y = t.transform.translation.y
+        # apriltag_ros reports the tag's flat plane (the cube's top face,
+        # since that's what the overhead camera sees), not the cube's
+        # volumetric center that the rest of this script assumes — correct
+        # by half the known 5cm cube height.
+        #
+        # There's also a separate, unexplained ~0.167m systematic offset
+        # between the detected height and the cube's known real height in
+        # the Isaac Sim scene (possibly related to the camera_info fy/fx
+        # mismatch Isaac Sim logs a warning about) - not root-caused yet,
+        # compensated here empirically. Same spirit as the TCP-offset
+        # estimate used elsewhere in this file: a placeholder to revisit,
+        # not a measured/derived constant.
+        CALIBRATION_OFFSET = 0.167
+        self.cube_z = t.transform.translation.z - 0.025 + CALIBRATION_OFFSET
+        self.get_logger().info(
+            f'Detected cube at ({self.cube_x:.3f}, {self.cube_y:.3f}, {self.cube_z:.3f})'
+        )
         self.add_cube()
         time.sleep(1.0)
         self.move_to_home()
-        
+
     def move_to_home(self, retries_left=5):
         self.get_logger().info('Moving to home position...')
         goal = MoveGroup.Goal()
@@ -52,10 +95,10 @@ class PickPlace(Node):
 
         joint_position_max = [360,360,180,360,360,360]
                 # since the values are in degress let's convert to radian
-        
+
         for i,deg in enumerate(joint_position_max):
             joint_position_max[i] = deg*math.pi/180
-                
+
         joint_position_min = [-1*i for i in joint_position_max]
 
         joint_positions = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
@@ -200,15 +243,15 @@ class PickPlace(Node):
         shape.type = SolidPrimitive.BOX
         shape.dimensions = [0.05, 0.05, 0.05]
         pose = Pose()
-        pose.position.x = 0.4
-        pose.position.y = -0.3
-        pose.position.z = 0.2
+        pose.position.x = self.cube_x
+        pose.position.y = self.cube_y
+        pose.position.z = self.cube_z
         pose.orientation.w = 1.0
         cube.primitives.append(shape)
         cube.primitive_poses.append(pose)
         cube.operation = CollisionObject.ADD
         self._scene_pub.publish(cube)
-        self.get_logger().info('Cube added at (0.4, -0.3, 0.2)')
+        self.get_logger().info(f'Cube added at ({self.cube_x:.3f}, {self.cube_y:.3f}, {self.cube_z:.3f})')
 
     def attach_cube(self, callback):
         self.get_logger().info('Attaching cube to gripper...')
@@ -233,7 +276,7 @@ class PickPlace(Node):
 
     def move_up(self):
         self.get_logger().info('Moving up with cube...')
-        self.send_cartesian_goal(0.4, -0.3, 0.5, self.move_to_place_above)
+        self.send_cartesian_goal(self.cube_x, self.cube_y, 0.5, self.move_to_place_above)
 
     def move_to_place_above(self):
         self.get_logger().info('Moving to place location...')
@@ -264,15 +307,15 @@ class PickPlace(Node):
 
     def move_above_cube(self):
         self.get_logger().info('Moving above cube...')
-        self.send_cartesian_goal(0.4, -0.3, 0.35, self.move_to_cube)
+        self.send_cartesian_goal(self.cube_x, self.cube_y, self.cube_z + 0.15, self.move_to_cube)
 
     def move_to_cube(self):
         self.get_logger().info('Moving to cube...')
         # tool0 is the wrist flange, not the fingertips — the Robotiq
         # gripper's reach is estimated at ~0.16m beyond tool0 (spec-based
         # guess, not measured — tune empirically once tested), so offset
-        # the target to land the fingertips at the cube's center (z=0.2)
-        self.send_cartesian_goal(0.4, -0.3, 0.36, lambda: self.attach_cube(lambda: self.close_gripper(self.move_up)))
+        # the target to land the fingertips at the cube's center
+        self.send_cartesian_goal(self.cube_x, self.cube_y, self.cube_z + 0.16, lambda: self.attach_cube(lambda: self.close_gripper(self.move_up)))
 
     def done(self):
         self.get_logger().info('Pick and place complete!')
