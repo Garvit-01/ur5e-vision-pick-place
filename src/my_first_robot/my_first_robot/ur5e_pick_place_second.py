@@ -13,10 +13,10 @@ import time,math
 class PickPlace(Node):
     def __init__(self):
         super().__init__('pick_place')
-
+        
         self._action_client = ActionClient(self, MoveGroup, 'move_action')
-
-
+        
+        
         self._scene_pub = self.create_publisher(
             CollisionObject, 'collision_object', 10
         )
@@ -35,23 +35,30 @@ class PickPlace(Node):
         time.sleep(0.5)
         self.lookup_cube_pose()
 
-    def lookup_cube_pose(self, retries_left=20):
-        if retries_left <= 0:
+    def lookup_cube_pose(self, timeout_sec=30.0):
+        # The TF listener only receives data while the executor is spinning,
+        # which hasn't started yet this early in __init__ — pump it manually.
+        # spin_once() often returns almost instantly (e.g. if some unrelated
+        # /tf message, like the robot's own joint-state-derived transforms,
+        # is already queued), so track real elapsed wall-clock time instead
+        # of counting retries - otherwise a fast-returning spin_once burns
+        # through a fixed retry count in milliseconds without ever actually
+        # waiting long enough for target_cube to show up.
+        deadline = time.time() + timeout_sec
+        t = None
+        while time.time() < deadline:
+            rclpy.spin_once(self, timeout_sec=0.1)
+            try:
+                t = self._tf_buffer.lookup_transform('base_link', 'target_cube', rclpy.time.Time())
+                break
+            except Exception:
+                continue
+        if t is None:
             self.get_logger().error(
-                'Could not find target_cube TF after retries — '
+                'Could not find target_cube TF after 30s — '
                 'is apriltag_node running and actually detecting the tag?'
             )
             rclpy.shutdown()
-            return
-        # The TF listener only receives data while the executor is spinning,
-        # which hasn't started yet this early in __init__ — pump it manually
-        # for a bit each retry so the buffer actually has a chance to fill.
-        rclpy.spin_once(self, timeout_sec=0.5)
-        try:
-            t = self._tf_buffer.lookup_transform('base_link', 'target_cube', rclpy.time.Time())
-        except Exception:
-            self.get_logger().info(f'Waiting for target_cube TF... ({retries_left} retries left)')
-            self.lookup_cube_pose(retries_left - 1)
             return
         self.cube_x = t.transform.translation.x
         self.cube_y = t.transform.translation.y
@@ -95,10 +102,10 @@ class PickPlace(Node):
 
         joint_position_max = [360,360,180,360,360,360]
                 # since the values are in degress let's convert to radian
-
+        
         for i,deg in enumerate(joint_position_max):
             joint_position_max[i] = deg*math.pi/180
-
+                
         joint_position_min = [-1*i for i in joint_position_max]
 
         joint_positions = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
@@ -354,9 +361,13 @@ class PickPlace(Node):
         oc.header.frame_id = "base_link"
         oc.link_name = "tool0"
         oc.orientation = target.pose.orientation
-        oc.absolute_x_axis_tolerance = 0.3
-        oc.absolute_y_axis_tolerance = 0.3
-        oc.absolute_z_axis_tolerance = 0.3
+        # Loose (0.3 rad ~ 17deg) tolerance lets the planner consider wrist
+        # rotations that spin the gripper into upper_arm_link - tightened to
+        # cut down on self-colliding candidate orientations (same fix
+        # validated earlier in this project for the same collision pair).
+        oc.absolute_x_axis_tolerance = 0.15
+        oc.absolute_y_axis_tolerance = 0.15
+        oc.absolute_z_axis_tolerance = 0.15
         oc.weight = 1.0
 
         constraints = Constraints()
@@ -380,7 +391,8 @@ class PickPlace(Node):
 def main():
     rclpy.init()
     node = PickPlace()
-    rclpy.spin(node)
+    if rclpy.ok():
+        rclpy.spin(node)
 
 if __name__ == '__main__':
     main()
