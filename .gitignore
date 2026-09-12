@@ -2,3 +2,6 @@ build/
 install/
 log/
 CLAUDE.md
+docs_local/
+frames_*.gv
+frames_*.pdf
