@@ -210,8 +210,8 @@ class PickPlace(Node):
 
     def on_goal_result(self, result_future, resend, callback, retries_left):
         error_code = result_future.result().result.error_code.val
-        self.get_logger().info(f'Error code: {error_code}')
         if error_code == 1:
+            self.get_logger().info('Motion succeeded')
             callback()
             return
         if retries_left > 0:
