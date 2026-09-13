@@ -47,6 +47,7 @@ not hardcoded):
 | `my_first_robot/config/tags_36h11_target_cube.yaml` | Tells `apriltag_ros` which tag to look for (family `36h11`, ID `0`), its real physical size (5cm), and to publish the detected frame as `target_cube` directly. |
 | `my_first_robot/urdf/ur5e_robotiq.urdf.xacro` | The combined UR5e arm + Robotiq gripper robot description. |
 | `my_first_robot/isaac-sim-scripts/` | OmniGraph setup scripts, pasted into Isaac Sim's own Script Editor (not run as ROS nodes) to wire up ROS2 publishing for the camera. |
+| `my_first_robot/isaac-sim-scripts/Adding_cube.usd` | The Isaac Sim scene: camera + tagged cube + the OmniGraph that publishes it to ROS2. Open this in Isaac Sim rather than building the scene from scratch. **Note:** the cube's AprilTag material references its texture (`assets/tag36h11_id0_1000px.png`) by an absolute path baked in from the original machine — if the cube loads with a blank/white face, re-point the material's Diffuse Texture to this repo's copy of that PNG. |
 | `ur5e_robotiq_moveit_config/launch/demo.launch.py` | Brings up `move_group`, RViz, and the controllers for the combined robot. |
 
 ### How to run the full demo
@@ -54,7 +55,8 @@ not hardcoded):
 Needs **four** things running at once — Isaac Sim, plus three terminals.
 
 **1. Isaac Sim** (GUI app, `~/isaacsim/isaac-sim.sh`):
-- Open the scene with the camera and tagged cube.
+- Open `my_first_robot/isaac-sim-scripts/Adding_cube.usd` (see the caveat about
+  its texture path in the table above).
 - Press **Play** on the timeline — the camera only publishes while playing.
 
 **2. Terminal 1 — MoveIt/RViz for the robot:**
