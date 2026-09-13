@@ -28,6 +28,16 @@ Sim, but the detection software (`apriltag_ros`) and the actual robot
 motion planning (MoveIt/RViz) are the same as they'd be with real
 hardware.
 
+### Demo
+
+![Pick and place demo](media/pick_and_place.gif)
+
+Full video (two runs back to back, cube moved to a different position in
+Isaac Sim between them, to prove the position is really detected each time,
+not hardcoded):
+
+[![Watch the full demo video](https://img.youtube.com/vi/jx8bc46TCks/maxresdefault.jpg)](https://youtu.be/jx8bc46TCks)
+
 ### Key files
 
 | File | What it does |
