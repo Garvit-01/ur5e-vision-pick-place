@@ -240,6 +240,19 @@ class PickPlace(Node):
         detached.object.id = "target_cube"
         detached.object.operation = CollisionObject.REMOVE
         self._attach_pub.publish(detached)
+        # Detaching via /attached_collision_object only converts the object
+        # back into a world collision object at its last attached-relative
+        # pose (i.e. wherever it was while the fingers were closed around
+        # it) - it doesn't delete it. Since the fingers have just opened,
+        # that stale closed-grip pose now overlaps the open fingertip,
+        # causing a real collision on every arm motion afterward (this is
+        # what was breaking `retreat`). Remove it from the world too so no
+        # ghost copy is left behind.
+        removed = CollisionObject()
+        removed.header.frame_id = "base_link"
+        removed.id = "target_cube"
+        removed.operation = CollisionObject.REMOVE
+        self._scene_pub.publish(removed)
         self.get_logger().info('Detached any previously-attached cube')
 
     def add_cube(self):
@@ -308,13 +321,58 @@ class PickPlace(Node):
         time.sleep(0.5)  # let the planning scene monitor process the detach
         self.retreat()
 
-    def retreat(self):
+    def retreat(self, retries_left=5):
         self.get_logger().info('Retreating...')
-        self.send_cartesian_goal(0.4, 0.3, 0.5, self.done)
+        # Joint-space, not a Cartesian pose goal like the other moves - this
+        # step has no precise-position requirement (the cube is already
+        # placed), it just needs to get the arm out of frame. The Cartesian
+        # version was failing here because move_to_place is free to land in
+        # any yaw satisfying the pi tolerance, sometimes an awkward one
+        # (e.g. near a wrist singularity) that makes the short lift back
+        # to (0.4, 0.3, 0.5) hard for OMPL to solve. Joint-space to the
+        # same home configuration used at the very start has never failed
+        # in any run this session.
+        goal = MoveGroup.Goal()
+        goal.request.group_name = "ur_manipulator"
+        goal.request.num_planning_attempts = 10
+        goal.request.allowed_planning_time = 5.0
+        goal.request.max_velocity_scaling_factor = 0.2
+        goal.request.max_acceleration_scaling_factor = 0.2
+
+        from sensor_msgs.msg import JointState
+
+        joint_state = JointState()
+        joint_state.name = [
+            'shoulder_pan_joint', 'shoulder_lift_joint', 'elbow_joint',
+            'wrist_1_joint', 'wrist_2_joint', 'wrist_3_joint']
+        joint_state.position = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+
+        goal.request.goal_constraints.append(
+            self.joint_state_to_constraints(joint_state)
+        )
+        goal.planning_options.plan_only = False
+
+        future = self._action_client.send_goal_async(goal)
+        future.add_done_callback(
+            lambda f: f.result().get_result_async().add_done_callback(
+                lambda r: self.on_goal_result(
+                    r,
+                    lambda n: self.retreat(n),
+                    self.done,
+                    retries_left,
+                )
+            )
+        )
 
     def move_above_cube(self):
         self.get_logger().info('Moving above cube...')
-        self.send_cartesian_goal(self.cube_x, self.cube_y, self.cube_z + 0.15, self.move_to_cube)
+        # +0.15 left too little margin once the gripper's own ~0.16m fingertip
+        # reach is factored in, causing occasional fingertip-vs-cube collisions
+        # depending on which wrist orientation (within tolerance) the planner
+        # samples. +0.20 gives more consistent clearance without pushing the
+        # hover height so high it becomes a reachability problem instead
+        # (which +0.25 did).
+        self.send_cartesian_goal(self.cube_x, self.cube_y, self.cube_z + 0.20, self.move_to_cube)
 
     def move_to_cube(self):
         self.get_logger().info('Moving to cube...')
@@ -361,13 +419,19 @@ class PickPlace(Node):
         oc.header.frame_id = "base_link"
         oc.link_name = "tool0"
         oc.orientation = target.pose.orientation
-        # Loose (0.3 rad ~ 17deg) tolerance lets the planner consider wrist
-        # rotations that spin the gripper into upper_arm_link - tightened to
-        # cut down on self-colliding candidate orientations (same fix
-        # validated earlier in this project for the same collision pair).
+        # X/Y tolerance controls how far the gripper can tilt away from
+        # straight-down (pitch/roll) - kept tight to avoid the gripper
+        # swinging into upper_arm_link. Z tolerance controls yaw (rotation
+        # about the gripper's own straight-down approach axis), which
+        # doesn't matter at all for grasping a symmetric cube - constraining
+        # it anyway was needlessly ruling out valid arm configurations at
+        # many (x,y) positions, since the arm's natural/reachable yaw at a
+        # given position often isn't the one exact value we were demanding.
+        # Freeing it up lets the planner pick whatever yaw is actually
+        # reachable at each position.
         oc.absolute_x_axis_tolerance = 0.15
         oc.absolute_y_axis_tolerance = 0.15
-        oc.absolute_z_axis_tolerance = 0.15
+        oc.absolute_z_axis_tolerance = math.pi
         oc.weight = 1.0
 
         constraints = Constraints()
