@@ -1,4 +1,4 @@
-# ros2_ws
+# ur5e-vision-pick-place
 
 ROS2 Jazzy workspace for a robotics portfolio: pick-and-place manipulation
 on two different robots, progressing from hardcoded object positions to
