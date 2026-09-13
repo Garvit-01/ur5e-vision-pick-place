@@ -5,3 +5,4 @@ CLAUDE.md
 docs_local/
 frames_*.gv
 frames_*.pdf
+__pycache__/
